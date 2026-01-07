@@ -30,8 +30,8 @@ def create_money_qr(payload: CreateMoneyQR, user=Depends(get_current_user)):
     return {
         "code": code,
         "dest_url": str(payload.dest_url),
-        "qr_url": f"/m/{code}",
-        "qr_url_full": f"{BASE_URL}/m/{code}",
+        "qr_url": f"/qr/m/{code}",
+        "qr_url_full": f"{BASE_URL}/qr/m/{code}",
     }
 
 @router.patch("/{code}", summary="Update destination (owner only)")
