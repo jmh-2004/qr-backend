@@ -7,7 +7,7 @@ from auth import get_current_user
 from db import get_conn
 from settings import BASE_URL, PAYOUT_PER_VALID_SCAN_USD
 
-router = APIRouter()
+router = APIRouter(prefix="/qr")
 
 class CreateMoneyQR(BaseModel):
     dest_url: HttpUrl
@@ -50,7 +50,7 @@ def update_money_qr(code: str, payload: UpdateMoneyQR, user=Depends(get_current_
         con.commit()
     return {"ok": True, "code": code, "dest_url": str(payload.dest_url)}
 
-@router.get("/m/{code}", include_in_schema=False)
+@router.get("/qr/m/{code}", include_in_schema=False)
 def money_entry(code: str, request: Request):
     with get_conn() as con:
         row = con.execute("SELECT active FROM money_qr_links WHERE code=%s", (code,)).fetchone()
