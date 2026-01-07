@@ -1,3 +1,4 @@
+# mymoneyqr.py
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -7,16 +8,29 @@ from auth import get_current_user
 from db import get_conn
 from settings import BASE_URL, PAYOUT_PER_VALID_SCAN_USD
 
-router = APIRouter(prefix="/qr")
+# API router (shows in Swagger): mounted at /moneyqr in main.py
+router = APIRouter()
+
+# Public router (scan links): mounted at root in main.py
+public_router = APIRouter()
+
 
 class CreateMoneyQR(BaseModel):
     dest_url: HttpUrl
 
+
 class UpdateMoneyQR(BaseModel):
     dest_url: HttpUrl
 
-def new_code():
+
+def new_code() -> str:
+    # URL-safe short-ish code
     return secrets.token_urlsafe(6).replace("-", "").replace("_", "")
+
+
+# ----------------------------
+# API endpoints (Swagger)
+# ----------------------------
 
 @router.post("", summary="Create money QR")
 def create_money_qr(payload: CreateMoneyQR, user=Depends(get_current_user)):
@@ -27,17 +41,24 @@ def create_money_qr(payload: CreateMoneyQR, user=Depends(get_current_user)):
             (code, user["uid"], str(payload.dest_url))
         )
         con.commit()
+
     return {
         "code": code,
         "dest_url": str(payload.dest_url),
+        # Public scan link (what you want users to scan)
         "qr_url": f"/qr/m/{code}",
         "qr_url_full": f"{BASE_URL}/qr/m/{code}",
     }
 
+
 @router.patch("/{code}", summary="Update destination (owner only)")
 def update_money_qr(code: str, payload: UpdateMoneyQR, user=Depends(get_current_user)):
     with get_conn() as con:
-        row = con.execute("SELECT owner_uid FROM money_qr_links WHERE code=%s", (code,)).fetchone()
+        row = con.execute(
+            "SELECT owner_uid FROM money_qr_links WHERE code=%s",
+            (code,)
+        ).fetchone()
+
         if not row:
             raise HTTPException(404, "Money QR not found")
         if row["owner_uid"] != user["uid"]:
@@ -48,16 +69,32 @@ def update_money_qr(code: str, payload: UpdateMoneyQR, user=Depends(get_current_
             (str(payload.dest_url), code)
         )
         con.commit()
+
     return {"ok": True, "code": code, "dest_url": str(payload.dest_url)}
 
-@router.get("/qr/m/{code}", include_in_schema=False)
+
+# ----------------------------
+# Public endpoints (scan flow)
+# ----------------------------
+
+@public_router.get("/qr/m/{code}", include_in_schema=False)
 def money_entry(code: str, request: Request):
+    """
+    Public entry point:
+    - verifies QR active
+    - creates a short-lived session (sid) for anti-double-credit
+    - shows a simple "ad" page with a countdown
+    """
     with get_conn() as con:
-        row = con.execute("SELECT active FROM money_qr_links WHERE code=%s", (code,)).fetchone()
+        row = con.execute(
+            "SELECT active FROM money_qr_links WHERE code=%s",
+            (code,)
+        ).fetchone()
+
         if not row or row["active"] is False:
             raise HTTPException(404, "Money QR not found")
 
-        # Create session, expires in 2 minutes
+        # Create session expires in 2 minutes
         expires_at = con.execute("SELECT now() + interval '2 minutes' AS exp").fetchone()["exp"]
         sid = con.execute(
             "INSERT INTO money_sessions(code, expires_at) VALUES (%s,%s) RETURNING sid",
@@ -65,6 +102,7 @@ def money_entry(code: str, request: Request):
         ).fetchone()["sid"]
         con.commit()
 
+    # NOTE: continue goes to /qr/m/{code}/go
     html = f"""
     <!doctype html>
     <html>
@@ -104,8 +142,9 @@ def money_entry(code: str, request: Request):
           setTimeout(tick, 1000);
         }};
         tick();
+
         btn.addEventListener("click", () => {{
-          window.location.href = "/m/{code}/go?sid={sid}";
+          window.location.href = "/qr/m/{code}/go?sid={sid}";
         }});
       </script>
     </body>
@@ -113,8 +152,14 @@ def money_entry(code: str, request: Request):
     """
     return HTMLResponse(html)
 
-@router.get("/m/{code}/go", include_in_schema=False)
+
+@public_router.get("/qr/m/{code}/go", include_in_schema=False)
 def money_go(code: str, sid: str):
+    """
+    Validates session:
+    - exists, not used, not expired
+    Credits owner once, then redirects to destination.
+    """
     with get_conn() as con:
         # Lock session to prevent double-credit
         sess = con.execute(
@@ -126,11 +171,17 @@ def money_go(code: str, sid: str):
             """,
             (sid, code)
         ).fetchone()
+
         if not sess:
             raise HTTPException(400, "Invalid session")
         if sess["used"] is True:
             raise HTTPException(400, "Session already used")
-        expired = con.execute("SELECT (now() > %s) AS expired", (sess["expires_at"],)).fetchone()["expired"]
+
+        expired = con.execute(
+            "SELECT (now() > %s) AS expired",
+            (sess["expires_at"],)
+        ).fetchone()["expired"]
+
         if expired:
             raise HTTPException(400, "Session expired")
 
@@ -138,6 +189,7 @@ def money_go(code: str, sid: str):
             "SELECT dest_url, owner_uid, active FROM money_qr_links WHERE code=%s",
             (code,)
         ).fetchone()
+
         if not qr or qr["active"] is False:
             raise HTTPException(404, "Money QR not found")
 
