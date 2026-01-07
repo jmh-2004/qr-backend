@@ -30,8 +30,8 @@ def create_qr(payload: CreateQR, user=Depends(get_current_user)):
     return {
         "code": code,
         "dest_url": str(payload.dest_url),
-        "qr_url": f"/r/{code}",
-        "qr_url_full": f"{BASE_URL}/r/{code}",
+        "qr_url": f"/qr/r/{code}",
+        "qr_url_full": f"{BASE_URL}/qr/r/{code}",
     }
 
 @router.patch("/{code}", summary="Update destination (owner only)")
