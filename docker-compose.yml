@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    container_name: qr_db
+    environment:
+      POSTGRES_USER: qruser
+      POSTGRES_PASSWORD: qrpass
+      POSTGRES_DB: qrdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - qrdb_data:/var/lib/postgresql/data
+
+volumes:
+  qrdb_data:
