@@ -3,10 +3,8 @@ from login import router as login_router
 from dashboard import router as dashboard_router
 from myqr import router as myqr_router
 from mymoneyqr import router as moneyqr_router
-from db import init_db
 
 app = FastAPI(title="QR Monetization Backend (v1)")
-init_db()
 
 @app.get("/health")
 def health():
