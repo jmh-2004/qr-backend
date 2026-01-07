@@ -15,5 +15,5 @@ def health():
 app.include_router(login_router, prefix="/auth", tags=["auth"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(myqr_router, prefix="/qr", tags=["qr"])
-app.include_router(moneyqr_router, prefix="/moneyqr", tags=["moneyqr"])
+app.include_router(moneyqr_router, tags=["moneyqr"])
 
